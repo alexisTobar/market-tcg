@@ -1,8 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import {
-  Search, Loader2, TrendingUp, ShieldCheck, ExternalLink,
-  LayoutGrid, List, AlertTriangle
-} from 'lucide-react';
+import { Search, Loader2, TrendingUp, ShieldCheck, AlertTriangle, ImageOff } from 'lucide-react';
 
 const EDICIONES = [
   { slug: "libertadores", id: 161, name: "Libertadores" },
@@ -28,72 +25,81 @@ const EDICIONES = [
   { slug: "valhalla", id: 85, name: "Valhalla" },
 ];
 
-// Componente individual que maneja su propia carga automática
 const PriceCard = ({ card, editionId }) => {
   const [priceData, setPriceData] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(false);
+  const [imgError, setImgError] = useState(false);
 
   useEffect(() => {
     let isMounted = true;
-
-    const fetchPrice = async () => {
+    
+    const fetchData = async () => {
       try {
-        // LLAMADA AUTOMÁTICA AL CARGAR
         const res = await fetch(`http://localhost:3001/api/prices?card=${encodeURIComponent(card.name)}`);
-        const data = await res.json();
-        if (isMounted) {
-          setPriceData(data);
-          setLoading(false);
+        
+        if (res.ok) {
+          const data = await res.json();
+          if (isMounted) {
+            setPriceData(data);
+            setLoading(false);
+          }
+        } else {
+          // Si no hay datos, es porque semilla.js aún no llega a esta carta
+          if (isMounted) setLoading(false);
         }
-      } catch (err) {
-        if (isMounted) {
-          setError(true);
-          setLoading(false);
-        }
+      } catch (e) {
+        if (isMounted) setLoading(false);
       }
     };
 
-    fetchPrice();
-
+    fetchData();
     return () => { isMounted = false; };
-  }, [card.name]); // Se ejecuta solo si cambia el nombre de la carta
+  }, [card.name]); 
 
-  const cardImageId = card.edid;
-  const finalEditionId = card.ed_edid || editionId;
+  const getImageUrl = () => {
+    if (imgError) return null;
+    const cardImageId = card.edid;
+    const finalEditionId = card.ed_edid || editionId;
+    return `https://api.myl.cl/static/cards/${finalEditionId}/${cardImageId}.png`;
+  };
+  const imageUrl = getImageUrl();
 
   return (
-    <div className="bg-[#161b22] rounded border border-gray-800 hover:border-gray-600 transition-all flex overflow-hidden group h-full">
-      {/* Imagen */}
-      <div className="w-[110px] bg-[#0d1117] p-2 flex items-center justify-center border-r border-gray-800">
-        <img
-          src={`https://api.myl.cl/static/cards/${finalEditionId}/${cardImageId}.png`}
-          alt={card.name}
-          className="max-h-[160px] object-contain transition-transform duration-300 group-hover:scale-105"
-          onError={(e) => e.target.style.opacity = 0.3}
-        />
+    <div className="bg-[#161b22] rounded border border-gray-800 hover:border-gray-600 transition-all flex overflow-hidden group h-full relative min-h-[140px]">
+      <div className="w-[100px] bg-[#0d1117] p-2 flex items-center justify-center border-r border-gray-800">
+        {imageUrl ? (
+          <img
+            src={imageUrl}
+            alt={card.name}
+            className="max-h-[140px] object-contain transition-transform duration-300 group-hover:scale-105"
+            loading="lazy"
+            onError={() => setImgError(true)}
+          />
+        ) : (
+          <div className="flex flex-col items-center justify-center text-gray-600 gap-1">
+             <ImageOff size={24} />
+             <span className="text-[9px]">Sin Img</span>
+          </div>
+        )}
       </div>
 
-      {/* Info y Precios */}
       <div className="flex-1 p-3 flex flex-col justify-between w-full">
         <div>
-          <h3 className="font-bold text-sm text-gray-100 leading-tight mb-1 truncate">{card.name}</h3>
+          <h3 className="font-bold text-sm text-gray-100 leading-tight mb-1 truncate" title={card.name}>{card.name}</h3>
           <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold uppercase border ${card.rarity === 'Ultra Real' ? 'text-amber-300 border-amber-800' : 'text-gray-500 border-gray-700'}`}>
             {card.rarity || 'Común'}
           </span>
         </div>
 
-        {/* SECCIÓN DE PRECIOS AUTOMATIZADA */}
         <div className="mt-2 pt-2 border-t border-gray-800 text-xs">
           {loading ? (
-            <div className="flex items-center gap-2 text-amber-500/70 animate-pulse">
-              <Loader2 size={12} className="animate-spin" /> Verificando stock...
+            <div className="flex items-center gap-2 text-amber-500/70">
+              <Loader2 size={12} className="animate-spin" /> <span className="text-[10px]">Cargando...</span>
             </div>
-          ) : error ? (
-            <div className="text-red-400 text-[10px]">Error conexión API</div>
+          ) : !priceData ? (
+             <div className="text-gray-600 text-[10px] italic">Esperando escaneo...</div>
           ) : (
-            <div className="space-y-1">
-              {/* Resumen Mejor Precio */}
+            <div className="space-y-1 animate-in fade-in duration-300">
               {priceData?.stats?.min > 0 ? (
                 <div className="flex justify-between items-center mb-2 bg-emerald-900/10 p-1.5 rounded border border-emerald-900/30">
                   <span className="text-emerald-500 font-bold">Mejor: ${priceData.stats.min.toLocaleString('es-CL')}</span>
@@ -101,12 +107,11 @@ const PriceCard = ({ card, editionId }) => {
                 </div>
               ) : (
                 <div className="flex items-center gap-1 text-gray-500 mb-2 italic">
-                  <AlertTriangle size={12} /> Sin stock online
+                  <AlertTriangle size={12} /> Sin stock
                 </div>
               )}
 
-              {/* Lista Tiendas */}
-              {priceData?.results?.map((store, idx) => (
+              {priceData?.results?.slice(0, 3).map((store, idx) => (
                 <a
                   key={idx}
                   href={store.link}
@@ -114,7 +119,7 @@ const PriceCard = ({ card, editionId }) => {
                   rel="noopener noreferrer"
                   className={`flex justify-between items-center px-1.5 py-1 rounded hover:bg-gray-700 transition-colors ${!store.price && 'opacity-40'}`}
                 >
-                  <span className="text-gray-400 text-[10px]">{store.store}</span>
+                  <span className="text-gray-400 text-[9px] truncate max-w-[70px]">{store.store}</span>
                   <span className={`font-mono font-bold ${store.price ? 'text-gray-200' : 'text-red-400'}`}>
                     {store.price ? `$${store.price.toLocaleString('es-CL')}` : '---'}
                   </span>
@@ -131,13 +136,12 @@ const PriceCard = ({ card, editionId }) => {
 export default function App() {
   const [selectedEdition, setSelectedEdition] = useState(EDICIONES[0]);
   const [cards, setCards] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [listLoading, setListLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
 
   useEffect(() => {
     const fetchCards = async () => {
-      setLoading(true);
-      setCards([]);
+      setListLoading(true);
       try {
         const response = await fetch(`https://api.myl.cl/cards/edition/${selectedEdition.slug}`);
         const data = await response.json();
@@ -146,7 +150,7 @@ export default function App() {
       } catch (err) {
         console.error(err);
       } finally {
-        setLoading(false);
+        setListLoading(false);
       }
     };
     fetchCards();
@@ -165,11 +169,10 @@ export default function App() {
               <TrendingUp size={20} className="text-amber-500" />
             </div>
             <div>
-              <h1 className="text-lg font-bold text-gray-100">MyL Market <span className="text-amber-500">AUTO</span></h1>
-              <p className="text-[10px] text-gray-500">Actualización automática (12h)</p>
+              <h1 className="text-lg font-bold text-gray-100">MyL Market <span className="text-emerald-500">DB</span></h1>
+              <p className="text-[10px] text-gray-500">Base de Datos Centralizada</p>
             </div>
           </div>
-
           <div className="flex gap-3 w-full md:w-auto">
             <select
               value={selectedEdition.slug}
@@ -190,11 +193,13 @@ export default function App() {
       </header>
 
       <main className="container mx-auto px-4 py-6">
-        {loading ? (
-          <div className="flex justify-center text-amber-500"><Loader2 className="animate-spin" /></div>
+        {listLoading ? (
+          <div className="flex justify-center text-amber-500 py-10">
+            <Loader2 className="animate-spin" size={32}/>
+          </div>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-            {filteredCards.slice(0, 50).map((card) => ( // LIMITADO A 50 PARA NO COLAPSAR TU RED AL INICIO
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 pb-20">
+            {filteredCards.map((card) => (
               <PriceCard
                 key={card.uuid || card.id}
                 card={card}
